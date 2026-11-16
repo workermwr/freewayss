@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini Freeways Clone</title>
+  <style>
+    body { margin: 0; background: #2c3e50; color: #ecf0f1; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+    #ui { padding: 10px; display: flex; gap: 20px; align-items: center; background: #1a252f; width: 100%; justify-content: center; }
+    canvas { background: #27ae60; cursor: crosshair; box-shadow: 0 4px 15px rgba(0,0,0,0.4); margin-top: 15px; border-radius: 8px; }
+    button { padding: 8px 14px; border: none; border-radius: 4px; background: #e67e22; color: white; font-weight: bold; cursor: pointer; }
+    button:hover { background: #d35400; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <span><strong>Cara Main:</strong> Klik & tarik mouse dari kotak titik keluar menuju kotak tujuan sesuai warna.</span>
+    <span>Skor Mobil Tiba: <strong id="score">0</strong></span>
+    <button onclick="clearRoads()">Hapus Semua Jalan</button>
+  </div>
+  <canvas id="game" width="850" height="520"></canvas>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+
+    let roads = [];
+    let currentRoad = null;
+    let cars = [];
+    let score = 0;
+
+    // Titik asal (spawner) dan tujuan (target)
+    const nodes = [
+      { id: 1, x: 100, y: 120, color: '#e74c3c', type: 'start', timer: 0 },
+      { id: 2, x: 750, y: 400, color: '#e74c3c', type: 'end' },
+      { id: 3, x: 100, y: 400, color: '#3498db', type: 'start', timer: 60 },
+      { id: 4, x: 750, y: 120, color: '#3498db', type: 'end' }
+    ];
+
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      currentRoad = [{ x: e.clientX - rect.left, y: e.clientY - rect.top }];
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!currentRoad) return;
+      const rect = canvas.getBoundingClientRect();
+      const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const last = currentRoad[currentRoad.length - 1];
+      if (Math.hypot(pt.x - last.x, pt.y - last.y) > 12) {
+        currentRoad.push(pt);
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      if (currentRoad && currentRoad.length > 1) {
+        roads.push(currentRoad);
+      }
+      currentRoad = null;
+    });
+
+    function clearRoads() {
+      roads = [];
+      cars = [];
+    }
+
+    function spawnCars() {
+      nodes.forEach(node => {
+        if (node.type === 'start') {
+          node.timer++;
+          if (node.timer > 110) {
+            node.timer = 0;
+            // Cari jalan yang dimulai dekat node ini
+            const road = roads.find(r => Math.hypot(r[0].x - node.x, r[0].y - node.y) < 35);
+            if (road) {
+              cars.push({ road, index: 0, progress: 0, color: node.color, speed: 2.2 });
+            }
+          }
+        }
+      });
+    }
+
+    function update() {
+      spawnCars();
+      for (let i = cars.length - 1; i >= 0; i--) {
+        const c = cars[i];
+        const p1 = c.road[c.index];
+        const p2 = c.road[c.index + 1];
+        if (!p2) {
+          // Cek apakah sampai di tujuan dengan warna yang sama
+          const target = nodes.find(n => n.type === 'end' && n.color === c.color && Math.hypot(p1.x - n.x, p1.y - n.y) < 35);
+          if (target) {
+            score++;
+            scoreEl.innerText = score;
+          }
+          cars.splice(i, 1);
+          continue;
+        }
+        const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        c.progress += c.speed;
+        if (c.progress >= dist) {
+          c.progress = 0;
+          c.index++;
+        }
+      }
+    }
+
+    function drawRoad(pts) {
+      if (pts.length < 2) return;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      // Pinggiran jalan
+      ctx.strokeStyle = '#bdc3c7';
+      ctx.lineWidth = 26;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      pts.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+      // Aspal
+      ctx.strokeStyle = '#34495e';
+      ctx.lineWidth = 20;
+      ctx.stroke();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Gambar semua jalan
+      roads.forEach(drawRoad);
+      if (currentRoad) drawRoad(currentRoad);
+
+      // Gambar titik asal & tujuan
+      nodes.forEach(n => {
+        ctx.fillStyle = n.color;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.type === 'start' ? 'ASAL' : 'TUJUAN', n.x, n.y + 4);
+      });
+
+      // Gambar mobil
+      cars.forEach(c => {
+        const p1 = c.road[c.index];
+        const p2 = c.road[c.index + 1];
+        if (!p2) return;
+        const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        const ratio = c.progress / dist;
+        const x = p1.x + (p2.x - p1.x) * ratio;
+        const y = p1.y + (p2.y - p1.y) * ratio;
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.fillStyle = c.color;
+        ctx.fillRect(-10, -6, 20, 12);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-10, -6, 20, 12);
+        ctx.restore();
+      });
+
+      update();
+      requestAnimationFrame(draw);
+    }
+
+    draw();
+  </script>
+</body>
+</html>
